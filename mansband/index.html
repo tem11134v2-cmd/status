@@ -146,7 +146,7 @@
     </svg>
     <span class="wordmark" style="color:#fff;">TIMUR SEO</span>
   </div>
-  <div class="upd"><b>обновлено 13.07.2026, 09:26</b>данные обновляются каждые 24 часа</div>
+  <div class="upd"><b>обновлено 13.07.2026, 17:55</b>данные обновляются каждые 24 часа</div>
 </div></div>
 
 <div class="wrap">
@@ -156,8 +156,16 @@
   </div>
 
   <section id="s-traffic" hidden>
-    <h2>Посетители из поиска</h2>
-    <div class="grid g3" id="kpi-cards"></div>
+    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+      <h2 style="margin:0;">Посетители из поиска</h2>
+      <div class="tabs" id="tr-tabs" style="margin-left:auto;">
+        <button class="tab on" data-p="week">По неделям</button>
+        <button class="tab" data-p="day">По дням</button>
+      </div>
+    </div>
+    <div class="l" id="tr-cap" style="margin:8px 0 0;"></div>
+    <div class="grid g3" id="kpi-week" style="margin-top:12px;"></div>
+    <div class="grid g3" id="kpi-day" style="margin-top:12px;" hidden></div>
   </section>
 
   <section id="s-keywords" hidden>
@@ -338,6 +346,41 @@ window.CLIENT_DATA = /*__DATA__*/{"metrika":{"counter_id":95530802,"period":{"fr
   }
   function dCls(v) { return !isNum(v) ? 'flat' : (v > 2 ? 'up' : (v < -2 ? 'down' : 'flat')); }
   function dArr(v) { return !isNum(v) ? '' : (v > 2 ? '↑' : (v < -2 ? '↓' : '→')); }
+  /* агрегаты по КАЛЕНДАРНЫМ неделям (ПН–ВС) из ряда daily (только органика).
+     last = прошлая (последняя завершённая) неделя, prev = позапрошлая;
+     базы за 30/90 дней — в пересчёте на неделю (× 7 / число дней с данными в окне). */
+  function weeklyStats(daily) {
+    if (!daily || !daily.length) return null;
+    var DAY = 86400000, byDate = {}, maxT = null;
+    daily.forEach(function (r) {
+      if (!r || !r.date || !isNum(r.organic)) return;
+      byDate[r.date] = r.organic;
+      var t = new Date(r.date + 'T00:00:00').getTime();
+      if (maxT === null || t > maxT) maxT = t;
+    });
+    if (maxT === null) return null;
+    function iso(t) { var d = new Date(t); return d.getFullYear() + '-' +
+      ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+    var dow = new Date(maxT).getDay();            /* 0=вс..6=сб */
+    var sunT = maxT - (dow === 0 ? 0 : dow) * DAY; /* последнее вс ≤ последней даты = конец завершённой недели */
+    function weekSum(endSunT) {                    /* сумма ПН..ВС, конец = endSunT */
+      var s = 0, has = false;
+      for (var i = 6; i >= 0; i--) { var v = byDate[iso(endSunT - i * DAY)]; if (isNum(v)) { s += v; has = true; } }
+      return has ? s : null;
+    }
+    function avgWeek(nDays) {                       /* средняя неделя за окно nDays до maxT включ. */
+      var s = 0, days = 0;
+      for (var i = 0; i < nDays; i++) { var v = byDate[iso(maxT - i * DAY)]; if (isNum(v)) { s += v; days++; } }
+      return days > 0 ? s * 7 / days : null;
+    }
+    return {
+      last: weekSum(sunT),
+      prev: weekSum(sunT - 7 * DAY),
+      avg30wk: avgWeek(30),
+      avg90wk: avgWeek(90),
+      range: fmtDshort(iso(sunT - 6 * DAY)) + '–' + fmtDshort(iso(sunT))
+    };
+  }
 
   /* всплывающая подсказка по клику/тапу (квадратики активности, столбики заявок) */
   var WD_RU = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
@@ -361,20 +404,55 @@ window.CLIENT_DATA = /*__DATA__*/{"metrika":{"counter_id":95530802,"period":{"fr
     }
   });
 
-  /* ---------- KPI трафика ---------- */
+  /* ---------- KPI трафика: табы «по неделям» (по умолч.) и «по дням» ---------- */
   if (M && M.seo_compare && isNum(M.seo_compare.yesterday)) {
     var c = M.seo_compare;
-    var kpis = [
+    function kpiCards(val, items) {
+      return items.map(function (k) {
+        var d = deltaPct(val, k.base);
+        return '<div class="card kpi"><span class="v">' + fmtInt(val) + '</span>' +
+          '<span class="d ' + dCls(d) + '">' + dArr(d) + ' ' + fmtPct(d) + '</span>' +
+          '<div class="l">' + esc(k.l) + '</div></div>';
+      }).join('');
+    }
+
+    /* дневные карточки (прежнее поведение) */
+    $('kpi-day').innerHTML = kpiCards(c.yesterday, [
       { base: c.avg7, l: 'вчера vs среднее за 7 дней' },
       { base: c.avg30, l: 'вчера vs среднее за 30 дней' },
       { base: c.same_weekday_prev, l: 'vs тот же день неделю назад' }
-    ];
-    $('kpi-cards').innerHTML = kpis.map(function (k) {
-      var d = deltaPct(c.yesterday, k.base);
-      return '<div class="card kpi"><span class="v">' + fmtInt(c.yesterday) + '</span>' +
-        '<span class="d ' + dCls(d) + '">' + dArr(d) + ' ' + fmtPct(d) + '</span>' +
-        '<div class="l">' + esc(k.l) + '</div></div>';
-    }).join('');
+    ]);
+
+    /* недельные карточки (по умолчанию) — считаем из ряда daily */
+    var wk = weeklyStats(M.daily);
+    var HAS_WK = !!(wk && isNum(wk.last));
+    if (HAS_WK) {
+      $('kpi-week').innerHTML = kpiCards(wk.last, [
+        { base: wk.prev, l: 'vs позапрошлая неделя' },
+        { base: wk.avg30wk, l: 'vs среднее за 30 дней' },
+        { base: wk.avg90wk, l: 'vs среднее за квартал' }
+      ]);
+    } else {
+      $('kpi-week').innerHTML = '<div class="card kpi"><span class="v">—</span>' +
+        '<div class="l">недостаточно данных для недельного среза</div></div>';
+    }
+
+    var caps = {
+      week: HAS_WK ? ('за прошлую неделю' + (wk.range ? ' (' + wk.range + ')' : '')) : 'недельный срез',
+      day: 'за вчера' + (M.period && M.period.to ? ' (' + fmtDshort(M.period.to) + ')' : '')
+    };
+    function showTr(p) {
+      $('kpi-week').hidden = (p !== 'week');
+      $('kpi-day').hidden = (p !== 'day');
+      $('tr-cap').textContent = caps[p] || '';
+      Array.prototype.forEach.call($('tr-tabs').children, function (x) {
+        x.className = (x.getAttribute('data-p') === p) ? 'tab on' : 'tab';
+      });
+    }
+    Array.prototype.forEach.call($('tr-tabs').children, function (b) {
+      b.addEventListener('click', function () { showTr(b.getAttribute('data-p')); });
+    });
+    showTr(HAS_WK ? 'week' : 'day');   /* нет недельных данных → открыть дневной таб */
     $('s-traffic').hidden = false;
   }
 
