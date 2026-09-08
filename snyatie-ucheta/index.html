@@ -93,6 +93,17 @@
   .squares { display:flex; gap:4px; flex-wrap:wrap; }
   .sq { width:16px; height:16px; border-radius:4px; background:var(--lav); cursor:pointer; }
   .sq.on { background:var(--orange); }
+  /* Четвёртое состояние: про день известно только из нашего журнала работ —
+     цикл в этот день по сайту работал, но подневной статистики переходов за
+     тот период не сохранилось (сервис помнит её около двух недель). Вид
+     намеренно другой: бледная заливка оранжевого с его же контуром. Дай мы
+     сплошной оранжевый — страница пообещала бы клиенту переходы, которых мы
+     не измеряли, а это ровно та подмена, ради которой в базе заведена
+     отдельная таблица. */
+  .sq.cycle { background:#fde0bf; box-shadow:inset 0 0 0 1.5px var(--orange); }
+  /* Данных за день нет вовсе. Ни оранжевый (работы шли), ни сплошной
+     лавандовый (работ не было) — оба утверждают факт, которого у нас нет. */
+  .sq.nodata { background:transparent; box-shadow:inset 0 0 0 1.5px var(--border); }
   #tt { position:absolute; z-index:20; background:var(--blue); color:#fff; border-radius:10px;
         padding:8px 12px; font-size:12.5px; max-width:260px; box-shadow:0 4px 14px rgba(0,20,140,.3); }
   .ev-date { display:inline-block; background:var(--lav); color:var(--blue); border-radius:6px;
@@ -155,7 +166,7 @@
   </div>
 
 
-  <div class="upd"><b>обновлено 07.09.2026, 16:23</b>данные обновляются каждые 24 часа</div>
+  <div class="upd"><b>обновлено 08.09.2026, 10:51</b>данные обновляются каждые 24 часа</div>
 </div></div>
 
 <div class="wrap">
@@ -222,7 +233,10 @@
     <div class="card" id="s-activity" hidden>
       <h3>Активность работ по дням <span class="muted small" id="act-period"></span></h3>
       <div class="squares" id="act-squares"></div>
-      <div class="note"><span style="color:var(--orange);">■</span> — в этот день шли работы по продвижению.</div>
+      <div class="note"><span style="color:var(--orange);">■</span> — в этот день шли переходы из поиска на сайт;
+        <span style="color:#f5c78a;">■</span> — велись работы по сайту (подробной статистики за день
+        не сохранилось); <span style="color:var(--lav);">■</span> — работ не было;
+        <span style="color:var(--border);">□</span> — данных за день нет.</div>
     </div>
   </section>
 
@@ -662,9 +676,24 @@ window.CLIENT_DATA = /*__DATA__*/{"metrika":{"counter_id":111303946,"period":{"f
   var ACT = S && S.activity30 || [];
   if (ACT.length) {
     $('act-period').textContent = fmtDshort(ACT[0].date) + ' — ' + fmtDshort(ACT[ACT.length - 1].date);
+    /* ЧЕТЫРЕ ВИДА КВАДРАТА, И РАЗНИЦА МЕЖДУ НИМИ СМЫСЛОВАЯ, А НЕ КОСМЕТИЧЕСКАЯ.
+       `active === null` — «данных за этот день нет»: до 29.08.2026 система не
+       сохраняла подневную историю, и все прежние дни рисовались как «работы не
+       велись» — то есть страница уверенно врала ровно там, где ей нечего было
+       сказать. Пустой квадрат честнее.
+       `source === 'legacy_log'` — день, известный только из нашего журнала
+       работ: мы знаем, что работали по сайту, и НЕ знаем, сколько переходов
+       сделал бот (эта статистика хранится около двух недель). Такой день обязан
+       отличаться и цветом, и подписью: обещать переходы там, где их никто не
+       измерял, нельзя. */
     $('act-squares').innerHTML = ACT.map(function (a) {
-      var tip = tipText(a.date, a.active ? 'работы по продвижению шли' : 'работы в этот день не велись');
-      return '<span class="sq' + (a.active ? ' on' : '') + '" data-tip="' + esc(tip) + '"></span>';
+      var known = a.active === true || a.active === false;
+      var cycleOnly = a.active === true && a.source === 'legacy_log';
+      var tip = tipText(a.date, !known ? 'данных за этот день нет'
+        : (cycleOnly ? 'велись работы по сайту; подробной статистики за этот день не сохранилось'
+          : (a.active ? 'работы по продвижению шли' : 'работы в этот день не велись')));
+      var cls = !known ? ' nodata' : (cycleOnly ? ' cycle' : (a.active ? ' on' : ''));
+      return '<span class="sq' + cls + '" data-tip="' + esc(tip) + '"></span>';
     }).join('');
     $('s-activity').hidden = false;
   }
